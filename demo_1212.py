@@ -7,7 +7,7 @@ import heapq
 # ======================= 参数配置 =======================
 AUDIO_FILE = 'step.wav'
 BLOCK_SIZE = 1024             # 分块大小
-TOTAL_BITRATE = 64.0          # 总比特率资源(示例值)
+TOTAL_BITRATE = 20.0          # 总比特率资源(示例值)
 SILENCE_BLOCK_SEARCH = 100    # 用于从前多少帧中选能量最低帧作为静音估计
 # ========================================================
 
@@ -96,14 +96,20 @@ for b in range(num_blocks):
             L = int(2**r)
             if L < 2:
                 L = 2
-            step = (2*block_max)/L
-            q_index = int(np.floor((val + block_max)/step))
-            if q_index < 0:
-                q_index = 0
-            elif q_index >= L:
-                q_index = L-1
-            # 将索引中心化，以0为中心
-            q_val = q_index - (L/2.0)
+            # Handle real and imaginary parts separately
+            step_real = (2*block_max)/L
+            step_imag = (2*block_max)/L
+            
+            # Quantize real part
+            q_index_real = int(np.floor((val.real + block_max)/step_real))
+            q_index_real = np.clip(q_index_real, 0, L-1)
+            
+            # Quantize imaginary part
+            q_index_imag = int(np.floor((val.imag + block_max)/step_imag))
+            q_index_imag = np.clip(q_index_imag, 0, L-1)
+            
+            # Combine real and imaginary parts
+            q_val = complex(q_index_real - (L/2.0), q_index_imag - (L/2.0))
         quant_block.append(q_val)
     quantized_blocks.append(quant_block)
 
@@ -162,3 +168,44 @@ encoded_stream = "".join([codes_dict[val] for val in all_quant_vals_str])
 print("Noise Power:", noise_power)
 print("Encoded bitstream length (bits):", len(encoded_stream))
 print("Done.")
+
+# ========== 写入压缩文件 ==========
+# 将编码后的比特流转换为字节
+padding_length = (8 - len(encoded_stream) % 8) % 8
+encoded_stream_padded = encoded_stream + '0' * padding_length
+
+# 转换为字节
+encoded_bytes = bytearray()
+for i in range(0, len(encoded_stream_padded), 8):
+    byte = encoded_stream_padded[i:i+8]
+    encoded_bytes.append(int(byte, 2))
+
+# 准备文件头部信息
+header = struct.pack('<6I', 
+    nchannels,
+    sampwidth,
+    framerate,
+    BLOCK_SIZE,
+    num_blocks,
+    len(encoded_stream)  # 原始编码流长度（用于去除padding）
+)
+
+# 写入压缩文件
+with open('compressed', 'wb') as fout:
+    # 写入头部信息
+    fout.write(header)
+    # 写入霍夫曼树（简化处理：将unique_vals和counts写入）
+    unique_vals_complex = [complex(x) for x in unique_vals]
+    # Fix: Properly unpack complex numbers into a flat list of real and imaginary parts
+    complex_parts = []
+    for x in unique_vals_complex:
+        complex_parts.extend([x.real, x.imag])
+    unique_vals_bytes = struct.pack(f'<{len(unique_vals)*2}d', *complex_parts)
+    counts_bytes = struct.pack(f'<{len(counts)}I', *counts)
+    fout.write(struct.pack('<I', len(unique_vals)))  # 写入符号数量
+    fout.write(unique_vals_bytes)
+    fout.write(counts_bytes)
+    # 写入编码后的数据
+    fout.write(bytes(encoded_bytes))
+
+print("Compression completed. File saved as 'compressed'")
