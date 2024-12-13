@@ -7,9 +7,9 @@ import sys
 from scipy.fftpack import dct
 
 # 参数设定
-BLOCK_SIZE = 1024  # 每个块的大小
+BLOCK_SIZE = 8192  # 每个块的大小
 # N_COEFF = int(sys.argv[1]) if len(sys.argv) > 1 else 200
-N_COEFF = 300
+N_COEFF = 1700
 
 # 打开输入音频文件
 fin = wave.open('step.wav', 'r')
@@ -37,6 +37,23 @@ print(dct_blocks.shape)
 truncated_dct_blocks = dct_blocks[:, :N_COEFF]
 print(truncated_dct_blocks.shape)
 
+# 使用示例:
+# print_bits(10, 4)  # 输出: 1010
+def print_bits(value, bits):
+    """
+    打印一个数字的每一位
+    
+    参数:
+    value: 要打印的数字
+    bits: 数字的位数
+    """
+    print(value,end=' : ')
+    for i in range(bits-1, -1, -1):
+        bit = (value >> i) & 1
+        print(bit, end='')
+    print()  # 换行
+
+
 def quantize_blocks(blocks, bits_per_block):
     assert len(bits_per_block) == blocks.shape[0], "位数数组长度必须等于块数"
     
@@ -61,28 +78,62 @@ def quantize_blocks(blocks, bits_per_block):
         # 创建当前块的字节流
         block_stream = bytearray(block_total_bytes)
         current_bit_pos = 0
+        # if i == 0:
+        #     for j in range(8):
+        #         print(block[j])
         
         # 量化并存储当前块的值
         quantized_values = np.round(block * quant_scale).astype(np.int32)
+        if i == 0:
+            for j in range(8):
+                print(quantized_values[j])
+        
         for value in quantized_values:
+            if(value == 975):
+                print("975---")
+                print(max(-(1 << (bits-1)), min(value, (1 << (bits-1)) - 1)))
             # 确保值在有效范围内
-            max_value = (1 << bits) - 1
-            value = max(0, min(value + (1 << (bits-1)), max_value))
+            value = max(-(1 << (bits-1)), min(value, (1 << (bits-1)) - 1))
+            if value < 0:
+                value = value + (1 << bits)
             
-            # 写入bits位
             byte_index = current_bit_pos // 8
             bit_offset = current_bit_pos % 8
             
-            remaining_bits = 8 - bit_offset
-            if bits <= remaining_bits:
-                block_stream[byte_index] |= (value << (remaining_bits - bits))
-            else:
-                first_part = bits - remaining_bits
-                block_stream[byte_index] |= (value >> first_part)
-                if byte_index + 1 < len(block_stream):
-                    block_stream[byte_index + 1] |= (value & ((1 << first_part) - 1)) << (8 - first_part)
+            # 初始化剩余需要写入的位数和当前值
+            remaining_value = value
+            bits_left = bits
             
-            current_bit_pos += bits
+            while bits_left > 0:
+                # 计算当前字节剩余可写入的位数
+                remaining_bits = 8 - (current_bit_pos % 8)
+                # 确定这次写入的位数
+                bits_to_write = min(remaining_bits, bits_left)
+                
+                # 准备写入的值
+                if bits_left > bits_to_write:
+                    # 如果还有更多位要写，取最高的bits_to_write位
+                    write_value = (remaining_value >> (bits_left - bits_to_write))
+                else:
+                    # 如果这是最后一次写入，取所有剩余位
+                    write_value = remaining_value
+                
+                # 写入值
+                byte_index = current_bit_pos // 8
+                block_stream[byte_index] |= (write_value & ((1 << bits_to_write) - 1)) << (remaining_bits - bits_to_write)
+                
+                # 更新剩余值和位数
+                remaining_value &= ((1 << (bits_left - bits_to_write)) - 1)
+                bits_left -= bits_to_write
+                current_bit_pos += bits_to_write
+        # print("-------------------------end-------------------------------")
+        
+        # 处理第一个块时打印前8个字节的二进制表示
+        if i == 0:
+            print("First block's first 8 quantized values:")
+            for j in range(8):
+                value = block_stream[j]
+                print_bits(value, 8)
         
         block_byte_streams.append(block_stream)
         block_padding_bits.append(block_padding)
@@ -115,6 +166,10 @@ for padding in block_padding_bits:
 
 # 写入压缩后的数据（每个块分别写入）
 for block_stream in block_byte_streams:
+    if block_stream == block_byte_streams[0]:
+        print(block_stream)
+        for i in range(8):
+            print_bits(block_stream[i], 8)
     fout.write(block_stream)
 
 fout.close()

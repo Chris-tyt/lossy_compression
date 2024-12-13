@@ -26,6 +26,22 @@ padding_bits = np.array([struct.unpack('<B', fin.read(1))[0] for _ in range(num_
 compressed_data = fin.read()
 fin.close()
 
+# 使用示例:
+# print_bits(10, 4)  # 输出: 1010
+def print_bits(value, bits):
+    """
+    打印一个数字的每一位
+    
+    参数:
+    value: 要打印的数字
+    bits: 数字的位数
+    """
+    print(value,end=' : ')
+    for i in range(bits-1, -1, -1):
+        bit = (value >> i) & 1
+        print(bit, end='')
+    print()  # 换行
+
 # 解压每个块的数据
 dct_blocks = np.zeros((num_blocks, N_COEFF), dtype=np.float32)
 current_byte_pos = 0
@@ -38,6 +54,10 @@ for block_idx in range(num_blocks):
     
     # 读取当前块的字节
     block_bytes = compressed_data[current_byte_pos:current_byte_pos + block_total_bytes]
+    if block_idx == 0:
+        for j in range(8):
+            value = block_bytes[j]
+            print_bits(value, 8)
     current_byte_pos += block_total_bytes
     
     # 解析比特流
@@ -65,9 +85,14 @@ for block_idx in range(num_blocks):
         # 将值转换回有符号数
         if value >= (1 << (bits-1)):
             value -= (1 << bits)
+        if block_idx == 0 and 0<byte_idx<16:
+            print(value)
             
         # 反量化
         dct_blocks[block_idx, coef_idx] = value / quant_scales[block_idx]
+    # if block_idx == 0:
+    #     for i in range(8):
+    #         print(dct_blocks[block_idx, i])
 
 # 填充DCT块到完整大小
 full_dct_blocks = np.zeros((num_blocks, BLOCK_SIZE), dtype=np.float32)
