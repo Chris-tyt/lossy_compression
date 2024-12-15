@@ -12,7 +12,7 @@ pad_length = struct.unpack('<i', fin.read(4))[0]
 framerate = struct.unpack('<i', fin.read(4))[0]
 
 # 读取每个块的截取系数数量
-coeffs_per_block = [struct.unpack('<i', fin.read(4))[0] for _ in range(num_blocks)]
+coeffs_per_block = [struct.unpack('<h', fin.read(2))[0] for _ in range(num_blocks)]
 
 # 读取每个块的量化位数
 bits_per_block = np.array([struct.unpack('<B', fin.read(1))[0] for _ in range(num_blocks)])

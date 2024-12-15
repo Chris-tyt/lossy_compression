@@ -168,7 +168,7 @@ fout.write(struct.pack('<i', framerate))
 
 # 写入每个块的截取系数数量
 for coeff_count in coeffs_per_block:
-    fout.write(struct.pack('<i', coeff_count))
+    fout.write(struct.pack('<h', coeff_count))
 
 # 写入每个块的量化位数（现在都是11）
 for bits in bits_per_block:
