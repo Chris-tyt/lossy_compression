@@ -1,37 +1,97 @@
 #!/usr/bin/env python
-
 import struct
 import wave
 import numpy as np
-import scipy as sp
-from scipy import fftpack
-import sys
+from scipy.fftpack import idct
 
-NUMCOEFF = 326000
-NUMCUT = int(sys.argv[1]) if len(sys.argv) > 1 else 35000
+# Read header information from the file
+fin = open('compressed', 'rb')
+BLOCK_SIZE = struct.unpack('<i', fin.read(4))[0]
+num_blocks = struct.unpack('<i', fin.read(4))[0]
+pad_length = struct.unpack('<i', fin.read(4))[0]
+framerate = struct.unpack('<i', fin.read(4))[0]
 
-fin = open('compressed','rb')
+# Read the number of coefficients per block
+coeffs_per_block = [struct.unpack('<h', fin.read(2))[0] for _ in range(num_blocks)]
 
-inbytes = fin.read();
+# Read the quantization bits per block
+bits_per_block = np.array([struct.unpack('<B', fin.read(1))[0] for _ in range(num_blocks)])
+
+# Read the quantization scales for each block
+quant_scales = np.array([struct.unpack('<f', fin.read(4))[0] for _ in range(num_blocks)])
+
+# Read the padding bits for each block
+padding_bits = np.array([struct.unpack('<B', fin.read(1))[0] for _ in range(num_blocks)])
+
+# Read compressed data
+compressed_data = fin.read()
 fin.close()
 
-coeffintlist = [struct.unpack('<h',inbytes[2*i:2*i+2]) for i in range(NUMCUT*2)]
+# Decompress data for each block
+dct_blocks = []
+current_byte_pos = 0
 
-coeffint = np.array(coeffintlist[0:NUMCUT]) + np.array(coeffintlist[NUMCUT:])*1j
+for block_idx in range(num_blocks):
+    bits = bits_per_block[block_idx]
+    n_coeff = coeffs_per_block[block_idx]
+    # Calculate the byte size of the current block
+    block_total_bits = bits * n_coeff
+    block_total_bytes = (block_total_bits + 7) // 8
+    
+    # Read the bytes for the current block
+    block_bytes = compressed_data[current_byte_pos:current_byte_pos + block_total_bytes]
+    current_byte_pos += block_total_bytes
+    
+    # Parse the bit stream
+    current_bit_pos = 0
+    block_dct = np.zeros(n_coeff, dtype=np.float32)
+    for coef_idx in range(n_coeff):
+        value = 0
+        bits_remaining = bits
+        while bits_remaining > 0:
+            byte_idx = current_bit_pos // 8
+            bit_offset = current_bit_pos % 8
+            
+            # Determine how many bits can be read from the current byte
+            bits_from_byte = min(8 - bit_offset, bits_remaining)
+            
+            # Extract bits from the byte
+            mask = ((1 << bits_from_byte) - 1) << (8 - bit_offset - bits_from_byte)
+            byte_value = (block_bytes[byte_idx] & mask) >> (8 - bit_offset - bits_from_byte)
+            
+            # Place the extracted bits in the correct position
+            value = (value << bits_from_byte) | byte_value
+            
+            bits_remaining -= bits_from_byte
+            current_bit_pos += bits_from_byte
+            
+        # Convert the value back to a signed number
+        if value >= (1 << (bits-1)):
+            value -= (1 << bits)
 
-allcoeffint = np.append(coeffint, np.zeros(NUMCOEFF - 2*(len(coeffint)-1) - 1))
-allcoeffint = np.append(allcoeffint, coeffint[len(coeffint)-1:0:-1].conjugate())
+        # Dequantize
+        block_dct[coef_idx] = value / quant_scales[block_idx]
+    
+    # Fill the DCT block to full size
+    full_block_dct = np.zeros(BLOCK_SIZE, dtype=np.float32)
+    full_block_dct[:n_coeff] = block_dct
+    dct_blocks.append(full_block_dct)
 
-samples = sp.fftpack.ifft(allcoeffint)
-print(samples[0])
+# Perform IDCT to recover the time-domain signal for each block
+reconstructed_blocks = idct(dct_blocks, type=2, norm='ortho', axis=1)
 
-samplesint = [int(round(32768*x)) for x in samples.real]
-samplesint = [max(min(i, 32767), -32768) for i in samplesint]
-outbytes = [struct.pack('<h',i) for i in samplesint]
-strout = b''.join(e for e in outbytes)
+# Concatenate all blocks
+reconstructed_samples = np.concatenate(reconstructed_blocks)
 
-fp = wave.open('out.wav','wb')
+# Remove padding
+if pad_length > 0:
+    reconstructed_samples = reconstructed_samples[:-pad_length]
 
-fp.setparams((1, 2, 44100, 326000, 'NONE', 'not compressed'))
-fp.writeframes(strout)
+# Convert float [-1,1] back to 16-bit integer
+samplesint = np.clip(np.round(reconstructed_samples * (2**15)), -32768, 32767).astype(np.int16)
+
+# Write to wav file
+fp = wave.open('out.wav', 'wb')
+fp.setparams((1, 2, framerate, len(samplesint), 'NONE', 'not compressed'))
+fp.writeframes(struct.pack('<' + 'h'*len(samplesint), *samplesint))
 fp.close()
