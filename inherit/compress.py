@@ -6,82 +6,82 @@ import scipy as sp
 import sys
 from scipy.fftpack import dct
 
-# 参数设定
-BLOCK_SIZE = 2048  # 每个块的大小
+# Parameter settings
+BLOCK_SIZE = 2048  # Size of each block
 # N_COEFF = int(sys.argv[1]) if len(sys.argv) > 1 else 200
 # N_COEFF = 1700
 
-# 打开输入音频文件
+# Open input audio file
 fin = wave.open('step.wav', 'r')
 (nchannels, sampwidth, framerate, nframes, comptype, compname) = fin.getparams()
 inbytes = fin.readframes(nframes)
 fin.close()
 
-# 将字节流转换为浮点型数组（归一化到[-1,1]之间）
+# Convert byte stream to float array (normalized to [-1,1])
 samplesint = np.array([struct.unpack('<h', inbytes[2*i:2*i+2])[0] for i in range(nframes)])
 samples = samplesint.astype(np.float32) / (2**15)
 
-# 分块处理
+# Process by blocks
 num_blocks = int(np.ceil(len(samples) / BLOCK_SIZE))
-# 对于不足一个块的部分进行补零
+# Zero-padding for incomplete blocks
 pad_length = num_blocks * BLOCK_SIZE - len(samples)
 if pad_length > 0:
     samples = np.concatenate((samples, np.zeros(pad_length, dtype=np.float32)))
 
-# 对每个块进行DCT
+# Perform DCT on each block
 blocks = samples.reshape(num_blocks, BLOCK_SIZE)
-dct_blocks = dct(blocks, type=2, norm='ortho', axis=1)  # 对每个块行进行DCT
+dct_blocks = dct(blocks, type=2, norm='ortho', axis=1)  # Perform DCT on each block row
 
 def calculate_energy_threshold(dct_block, energy_threshold=0.995):
     """
-    计算每个块的频谱能量，并选择达到能量阈值的频率系数数量。
+    Calculate spectral energy for each block and select the number of frequency coefficients 
+    that reach the energy threshold.
     
-    参数:
-    dct_block: DCT 变换后的块
-    energy_threshold: 能量阈值百分比 (0-1)
+    Parameters:
+    dct_block: Block after DCT transformation
+    energy_threshold: Energy threshold percentage (0-1)
     
-    返回:
-    选择的频率系数数量
+    Returns:
+    Number of selected frequency coefficients
     """
-    # 计算每个频率系数的能量
+    # Calculate energy for each frequency coefficient
     energy = np.square(dct_block)
     total_energy = np.sum(energy)
     
-    # 计算累积能量
+    # Calculate cumulative energy
     cumulative_energy = np.cumsum(energy)
     
-    # 找到累积能量达到阈值的频率系数数量
+    # Find the number of frequency coefficients that reach the threshold
     num_coeffs = np.searchsorted(cumulative_energy, energy_threshold * total_energy) + 1
     
     return num_coeffs
 
 # 对每个块计算所需的频率系数数量
 coeffs_per_block = [calculate_energy_threshold(block) for block in dct_blocks]
-coeffs_per_block = [429] * num_blocks
-
-# 处理命令行参数
-if len(sys.argv) > 2:
-    block_index = int(sys.argv[1])  # 第一个参数：要修改的块的索引
-    new_coeff_count = int(sys.argv[2])  # 第二个参数：新的系数数量
-    if 0 <= block_index < num_blocks:  # 确保索引在有效范围内
-        coeffs_per_block[block_index] = new_coeff_count
+coeffs_per_block = [250, 429, 439, 399, 319, 299, 339, 319, 319, 299, 359, 379, 299, 279, 339, 319, 319, 319, 319, 339, 339, 339, 319, 339, 299, 299, 259, 299, 259, 489, 399, 399, 319, 279, 250, 259, 299, 359, 319, 299, 399, 449, 509, 569, 489, 489, 429, 319, 299, 259, 250, 259, 259, 299, 319, 319, 429, 429, 429, 429, 429, 589, 429, 429, 509, 429, 429, 589, 509, 469, 429, 689, 429, 429, 429, 689, 469, 489, 469, 469, 429, 429, 489, 359, 339, 379, 339, 259, 259, 259, 279, 279, 339, 449, 449, 689, 509, 449, 689, 689, 669, 449, 449, 549, 429, 419, 319, 469, 489, 419, 299, 279, 299, 359, 399, 449, 429, 299, 259, 279, 319, 399, 299, 299, 469, 509, 509, 379, 339, 379, 399, 339, 359, 319, 319, 299, 339, 319, 339, 319, 439, 259, 259, 259, 299, 339, 279, 279, 279, 259, 259, 279, 279, 279, 259,1,1,1,1,1]# coeffs_per_block[2] = 250
+# coeffs_per_block[149] = 250
+# coeffs_per_block[75] = 700
+# coeffs_per_block[98] = 600
+# coeffs_per_block[99] = 600
+# coeffs_per_block[100] = 600
+# coeffs_per_block[71] = 600
 
 # 截取每个块的前 coeffs_per_block[i] 个系数
 truncated_dct_blocks = [block[:n] for block, n in zip(dct_blocks, coeffs_per_block)]
 
 def print_bits(value, bits):
     """
-    打印一个数字的每一位
+    Print each bit of a number
     
-    参数:
-    value: 要打印的数字
-    bits: 数字的位数
+    Parameters:
+    value: Number to print
+    bits: Number of bits
     """
     print(value,end=' : ')
     for i in range(bits-1, -1, -1):
         bit = (value >> i) & 1
         print(bit, end='')
-    print()  # 换行
+    print()  # New line
 
 
 def quantize_blocks(blocks, bits_per_block):
@@ -136,7 +136,7 @@ def quantize_blocks(blocks, bits_per_block):
                     # 如果还有更多位要写，取最高的bits_to_write位
                     write_value = (remaining_value >> (bits_left - bits_to_write))
                 else:
-                    # 如果这是最后一次写入，取所有剩余���
+                    # 如果这是最后一次写入，取所有剩余位
                     write_value = remaining_value
                 
                 # 写入值
@@ -158,7 +158,7 @@ def quantize_blocks(blocks, bits_per_block):
 bits_per_block = np.full(num_blocks, 10)
 block_byte_streams, quant_scales, block_padding_bits = quantize_blocks(truncated_dct_blocks, bits_per_block)
 
-# print(coeffs_per_block)
+print(coeffs_per_block)
 
 # 修改写入文件的部分
 fout = open('compressed', 'wb')
@@ -169,7 +169,7 @@ fout.write(struct.pack('<i', framerate))
 
 # 写入每个块的截取系数数量
 for coeff_count in coeffs_per_block:
-    fout.write(struct.pack('<i', coeff_count))
+    fout.write(struct.pack('<h', coeff_count))
 
 # 写入每个块的量化位数（现在都是11）
 for bits in bits_per_block:

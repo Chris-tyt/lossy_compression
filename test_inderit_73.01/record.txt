@@ -1,2 +1,0 @@
-Blocks with MSE < 4e-5: 105
-Blocks with MSE >= 4e-5: 54

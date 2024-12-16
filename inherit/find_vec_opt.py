@@ -13,7 +13,7 @@ class GeneticOptimizer:
         self.data = data
         self.block_ids = sorted(data.keys())
         
-        # 根据数据规模自动设置种群大小
+        # Automatically set population size based on data scale
         if population_size is None:
             self.population_size = max(100, len(self.block_ids) * 3)
         else:
@@ -23,27 +23,27 @@ class GeneticOptimizer:
         self.mutation_rate = mutation_rate
         
     def create_individual(self) -> Dict[int, Tuple[int, float]]:
-        """创建一个个体（一个可能的解）"""
+        """Create an individual (a possible solution)"""
         individual = {}
         for block_id in self.block_ids:
             individual[block_id] = random.choice(self.data[block_id])
         return individual
     
     def calculate_fitness(self, individual: Dict[int, Tuple[int, float]]) -> float:
-        """计算适应度（越高越好）"""
+        """Calculate fitness (the higher, the better)"""
         total_waves = sum(waves for waves, _ in individual.values())
         avg_mse = sum(mse for _, mse in individual.values()) / len(individual)
         
-        # 如果不满足MSE约束，给予惩罚
+        # If MSE constraint is not met, apply a penalty
         if avg_mse > 4e-5:
             return -float('inf')
         
-        # 适应度为波数的负值（因为我们要最小化波数）
+        # Fitness is the negative value of total waves (since we want to minimize waves)
         return -total_waves
     
     def crossover(self, parent1: Dict[int, Tuple[int, float]], 
                  parent2: Dict[int, Tuple[int, float]]) -> Dict[int, Tuple[int, float]]:
-        """交叉操作"""
+        """Crossover operation"""
         child = {}
         for block_id in self.block_ids:
             if random.random() < 0.5:
@@ -53,25 +53,25 @@ class GeneticOptimizer:
         return child
     
     def mutate(self, individual: Dict[int, Tuple[int, float]]) -> Dict[int, Tuple[int, float]]:
-        """变异操作"""
+        """Mutation operation"""
         for block_id in self.block_ids:
             if random.random() < self.mutation_rate:
                 individual[block_id] = random.choice(self.data[block_id])
         return individual
     
     def optimize(self) -> Dict[int, Tuple[int, float]]:
-        # 初始化种群
+        # Initialize population
         population = [self.create_individual() for _ in range(self.population_size)]
         
         for generation in range(self.generations):
-            # 计算适应度
+            # Calculate fitness
             fitness_scores = [(ind, self.calculate_fitness(ind)) for ind in population]
             fitness_scores.sort(key=lambda x: x[1], reverse=True)
             
-            # 选择最优的一部分个体
+            # Select the best individuals
             elite = [ind for ind, _ in fitness_scores[:self.population_size//2]]
             
-            # 生成新一代
+            # Generate the next generation
             new_population = elite.copy()
             while len(new_population) < self.population_size:
                 parent1 = random.choice(elite)
@@ -82,7 +82,7 @@ class GeneticOptimizer:
             
             population = new_population
             
-            # 打印当前最优解
+            # Print current best solution
             best_solution = fitness_scores[0][0]
             total_waves = sum(waves for waves, _ in best_solution.values())
             avg_mse = sum(mse for _, mse in best_solution.values()) / len(best_solution)
@@ -91,7 +91,7 @@ class GeneticOptimizer:
         return fitness_scores[0][0]
 
 def find_optimal_combination():
-    # 读取文件数据
+    # Read file data
     data = {}
     with open(file_path, 'r') as f:
         for line in f:
@@ -104,31 +104,31 @@ def find_optimal_combination():
                 data[block_id] = []
             data[block_id].append((waves, mse))
     
-    # 使用遗传算法优化
+    # Use genetic algorithm to optimize
     optimizer = GeneticOptimizer(data)
     best_solution = optimizer.optimize()
     
-    # 计算结果
+    # Calculate results
     total_waves = sum(waves for waves, _ in best_solution.values())
     avg_mse = sum(mse for _, mse in best_solution.values()) / len(best_solution)
     
-    # 创建结果列表
+    # Create result list
     result = []
     for block_id in sorted(best_solution.keys()):
         waves, _ = best_solution[block_id]
         result.append(waves)
     
-    # 打印信息
+    # Print information
     if avg_mse < 4e-5:
-        print(f"\n找到可行解:")
-        print(f"总波数: {total_waves}")
-        print(f"平均MSE: {avg_mse}")
+        print(f"\nFound feasible solution:")
+        print(f"Total waves: {total_waves}")
+        print(f"Average MSE: {avg_mse}")
     else:
-        print("未找到满足条件的解")
+        print("No feasible solution found")
     
     return result
 
 if __name__ == "__main__":
     result_list = find_optimal_combination()
-    print("\n最终选择的波数列表:")
+    print("\nFinal selected wave number list:")
     print(result_list)

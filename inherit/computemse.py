@@ -31,16 +31,17 @@ samplesfloat = [float(x[0])/(2**15) for x in samplesint]
 samples2 = np.array(samplesfloat)
 
 
-# 设定块大小
-block_size = 2048  # 可以根据需要修改这个值
+# Set block size
+# This value can be modified as needed
+block_size = 2048
 
-# 计算需要多少个完整的块
+# Calculate how many complete blocks are needed
 num_blocks = len(samples1) // block_size
 
-# 存储所有块的MSE
+# Store all block MSEs
 mse_values = []
 
-# 对每个块计算MSE
+# Calculate MSE for each block
 for i in range(num_blocks):
     start_idx = i * block_size
     end_idx = (i + 1) * block_size
@@ -48,18 +49,18 @@ for i in range(num_blocks):
     mse_values.append((i, block_mse))
     print(f'Block {i} MSE: {block_mse}')
 
-# 处理最后一个不完整的块（如果有的话）
+# Process the last incomplete block (if any)
 if len(samples1) % block_size != 0:
     start_idx = num_blocks * block_size
     last_block_mse = np.mean((samples1[start_idx:] - samples2[start_idx:])**2)
     mse_values.append(('Last', last_block_mse))
     print(f'Last block MSE: {last_block_mse}')
 
-# 打印总体MSE
+# Print overall MSE
 total_mse = np.mean((samples1 - samples2)**2)
 print(f'\nTotal MSE: {total_mse}')
 
-# 打印前五个最大的MSE
+# Print the top five largest MSE
 print('\nTop 5 largest MSE values:')
 sorted_mse = sorted(mse_values, key=lambda x: x[1], reverse=True)
 for i, (block_num, mse) in enumerate(sorted_mse[:5]):
